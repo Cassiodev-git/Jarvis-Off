@@ -1,0 +1,27 @@
+{
+  "name": "jarvis-modelo-1.0",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "better-sqlite3": "^13.0.2",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^5.11.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.1.2",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.23.5",
+    "typescript": "^7.0.2"
+  }
+}

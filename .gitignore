@@ -1,0 +1,19 @@
+# Dependências
+node_modules/
+
+# Builds e compilação
+dist/
+*.tsbuildinfo
+
+# Variáveis de ambiente e segredos locais
+.env
+.env.local
+
+# Banco de dados local do SQLite
+*.sqlite
+*.sqlite-journal
+*.db
+
+# Logs do sistema
+*.log
+npm-debug.log*

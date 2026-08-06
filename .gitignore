@@ -17,3 +17,5 @@ dist/
 # Logs do sistema
 *.log
 npm-debug.log*
+#pastas
+tmp/

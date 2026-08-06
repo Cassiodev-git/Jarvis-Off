@@ -1,14 +1,24 @@
 import sys
+import os
 import subprocess
 import signal
+import glob
 import numpy as np
 import openwakeword
 from openwakeword.model import Model
 
 def main():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # 1. Procura por modelos ONNX customizados na pasta bin/wakeword/
+    custom_models = glob.glob(os.path.join(script_dir, "*.onnx"))
+
+    # Carrega "hey_jarvis" + modelos customizados (ex: acorda_crianca.onnx, bom_dia.onnx)
+    models_to_load = ["hey_jarvis"] + custom_models
+
     try:
         openwakeword.utils.download_models()
-        owwModel = Model(wakeword_models=["hey_jarvis"], inference_framework="onnx")
+        owwModel = Model(wakeword_models=models_to_load, inference_framework="onnx")
     except Exception as e:
         sys.exit(1)
 
@@ -28,8 +38,7 @@ def main():
     except Exception as e:
         sys.exit(1)
 
-    # Garante que o processo do rec seja morto ao fechar o script
-    def cleanup(signum, frame):
+    def cleanup(signum=None, frame=None):
         if process and process.poll() is None:
             process.terminate()
             process.wait()
@@ -52,16 +61,13 @@ def main():
             audio_data = np.frombuffer(raw_data, dtype=np.int16)
             owwModel.predict(audio_data)
 
+            # Detecta se QUALQUER UM dos modelos (Jarvis, Acorda Criança, Bom Dia) disparou
             for model_name, scores in owwModel.prediction_buffer.items():
                 current_score = scores[-1]
 
-                # Sensibilidade equilibrada (0.30)
                 if current_score > 0.30:
                     print("WAKE_WORD_DETECTED", flush=True)
-                    if process and process.poll() is None:
-                        process.terminate()
-                        process.wait()
-                    sys.exit(0)
+                    cleanup()
 
         except Exception as e:
             if process and process.poll() is None:

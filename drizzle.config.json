@@ -1,8 +1,0 @@
-{
-    "schema": "./src/modules/memory/schema.ts",
-    "out": "./drizzle",
-    "dialect": "sqlite",
-    "dbCredentials": {
-        "url": "jarvis.db"
-    }
-}

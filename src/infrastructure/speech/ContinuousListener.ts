@@ -1,21 +1,14 @@
 // src/infrastructure/speech/VoskProvider.ts
 import { spawn, ChildProcess } from 'node:child_process';
-import path from 'node:path';
 import vosk from 'vosk';
 import { IWakeWord } from '../../core/contracts/IWakeWord.js';
 
-export interface VoskConfig {
-    modelPath?: string;
-    sampleRate?: number;
-}
-
 export class VoskProvider implements IWakeWord {
-    private readonly model: vosk.Model;
-    private readonly sampleRate: number;
     private recordProcess: ChildProcess | null = null;
     private recognizer: vosk.Recognizer | null = null;
     private isListening = false;
 
+    // As suas variações fonéticas em português
     private readonly wakeWords = [
         'jarvis',
         'jarves',
@@ -27,27 +20,25 @@ export class VoskProvider implements IWakeWord {
         'serviço'
     ];
 
-    constructor(configOrModel?: VoskConfig | vosk.Model) {
-        if (configOrModel instanceof vosk.Model) {
-            this.model = configOrModel;
-            this.sampleRate = 16000;
-        } else {
-            const modelPath = configOrModel?.modelPath || path.resolve(process.cwd(), 'models', 'vosk-model-pt-br');
-            this.model = new vosk.Model(modelPath);
-            this.sampleRate = configOrModel?.sampleRate || 16000;
-        }
-    }
+    constructor(
+        private readonly model: vosk.Model,
+        private readonly sampleRate: number = 16000
+    ) {}
 
+    /**
+     * Checa se o texto escutado contém alguma variação aceita do nome Jarvis
+     */
     private isWakeWordPresent(text: string): boolean {
         if (!text) return false;
         const normalizedText = text.toLowerCase();
         return this.wakeWords.some((word) => normalizedText.includes(word));
     }
 
+    /**
+     * Inicia a escuta passiva no microfone (Contrato IWakeWord)
+     */
     public async startListening(onWakeWordDetected: () => void): Promise<void> {
         if (this.isListening) return;
-
-        vosk.setLogLevel(-1); // Silencia os logs do C++ no terminal
 
         const grammarList = [...this.wakeWords, '[unk]'];
 
@@ -60,6 +51,7 @@ export class VoskProvider implements IWakeWord {
         this.isListening = true;
         console.log('🎧 [J.A.R.V.I.S.] Escutando em segundo plano... Fale "Jarvis" para ativar.');
 
+        // Abre o microfone via ALSA (arecord)
         this.recordProcess = spawn('arecord', [
             '-D', 'default',
             '-f', 'S16_LE',
@@ -96,6 +88,9 @@ export class VoskProvider implements IWakeWord {
         onWakeWordDetected();
     }
 
+    /**
+     * Para a escuta e libera o microfone e memória (Contrato IWakeWord)
+     */
     public async stopListening(): Promise<void> {
         this.isListening = false;
 

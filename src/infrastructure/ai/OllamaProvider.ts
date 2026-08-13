@@ -22,6 +22,9 @@ export class OllamaProvider implements AIProvider {
                     model: model || this.defaultModel,
                     messages,
                     stream: false,
+                    options: {
+                        temperature: 0.7,
+                    },
                 }),
             });
 
@@ -36,7 +39,10 @@ export class OllamaProvider implements AIProvider {
                 message: { role: string; content: string };
             };
 
-            return data.message.content;
+            const rawContent = data.message?.content || '';
+
+            // Sanitiza o conteúdo removendo marcações de Markdown para o TTS
+            return this.cleanTextForTTS(rawContent);
         } catch (error) {
             if (error instanceof AppError) {
                 throw error;
@@ -47,5 +53,21 @@ export class OllamaProvider implements AIProvider {
                 500
             );
         }
+    }
+
+    /**
+     * Sanitiza o texto removendo caracteres e formatações de Markdown (*, #, `, etc.)
+     * para evitar que o sintetizador de voz (Piper) leia artefatos visuais.
+     */
+    private cleanTextForTTS(text: string): string {
+        return text
+            .replace(/```[\s\S]*?```/g, '')  // Remove blocos de código
+            .replace(/`([^`]+)`/g, '$1')     // Remove código inline
+            .replace(/\*\*(.*?)\*\*/g, '$1') // Remove negrito
+            .replace(/\*(.*?)\*/g, '$1')     // Remove itálico
+            .replace(/#+\s/g, '')            // Remove cabeçalhos/títulos
+            .replace(/[\r\n]+/g, ' ')        // Substitui quebras de linha por espaço
+            .replace(/\s+/g, ' ')            // Normaliza múltiplos espaços
+            .trim();
     }
 }

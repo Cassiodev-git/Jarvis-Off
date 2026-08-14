@@ -1,5 +1,5 @@
 // src/modules/memory/factory/memory.factory.ts
-import { MemoryRepository } from '../repository/memory.repository.js';
+import { MemoryRepository } from '../repository/MemoryRepository.js';
 import { MemoryService } from '../service/memory.service.js';
 
 /**

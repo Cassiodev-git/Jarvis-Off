@@ -1,10 +1,14 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const projects = sqliteTable('projects', {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: text('id').primaryKey(),
     name: text('name').notNull(),
     description: text('description'),
     path: text('path'),
-    status: text('status').default('active').notNull(), // 'active', 'archived'
-    createdAt: text('created_at').default('CURRENT_TIMESTAMP').notNull(),
+    status: text('status').notNull().default('active'), // active, paused, archived
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
 });
+
+export type ProjectEntity = typeof projects.$inferSelect;
+export type NewProjectEntity = typeof projects.$inferInsert;

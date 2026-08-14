@@ -1,86 +1,98 @@
-// src/index.ts
-import path from 'node:path';
-import { VoskProvider } from './infrastructure/speech/VoskProvider.js';
-import { WhisperProvider } from './infrastructure/speech/WhisperProvider.js';
-import { PiperProvider } from './infrastructure/speech/PiperProvider.js';
-import { OllamaProvider } from './infrastructure/ai/OllamaProvider.js';
+import 'dotenv/config';
+import fastify from 'fastify';
+import cors from '@fastify/cors';
 
-// Importa apenas a Factory e a camada de serviço/contexto
-import { makeMemoryService } from './modules/memory/factory/memory.factory.js';
-import { ContextBuilder } from './core/ContextBuilder.js';
-import { ChatMessage } from './infrastructure/ai/AIProvider.js';
+// Core & Interfaces
+import { JarvisCore } from './core/JarvisCore.js';
+import { SessionState } from './core/services/SessionState.js';
+import { ContextBuilder } from './core/services/ContextBuilder.js';
+import { IntentManager } from './core/IntentManager.js';
+import { ChatMessage } from './core/contracts/ILanguageModel.js';
 
-async function main() {
-    console.log('====================================================');
-    console.log('       J.A.R.V.I.S. — Sistema Híbrido Ativado       ');
-    console.log('====================================================\n');
+// Módulo de Memória
+import { MemoryRepository } from './modules/memory/repository/MemoryRepository.js';
+import { MemoryService } from './modules/memory/service/memory.service.js';
+import { MemoryController } from './modules/memory/controller/memory.controller.js';
 
-    // 1. Instanciação Limpa via Factory (Sem vazamento de Repository)
-    const memoryService = makeMemoryService();
-    const contextBuilder = new ContextBuilder(memoryService);
-    const llm = new OllamaProvider();
+// Infraestrutura & Provedores
+import { ConsoleLoggerProvider } from './infrastructure/logger/ConsoleLoggerProvider.js';
+import { VoskProvider } from './infrastructure/providers/VoskProvider.js';
+import { OllamaProvider } from './infrastructure/providers/OllamaProvider.js'; // Ajuste conforme seu provedor concreto (ex: GeminiProvider)
 
-    // 2. Provedores de Áudio
-    const wakeWordDetector = new VoskProvider({
-        modelPath: path.join(process.cwd(), 'models', 'vosk-model-pt-br')
+async function bootstrap() {
+    const logger = new ConsoleLoggerProvider();
+    logger.info('🚀 Inicializando J.A.R.V.I.S. Engine...');
+
+    // 1. Instanciação da Camada de Banco de Dados e Repositórios
+    const memoryRepository = new MemoryRepository();
+    const memoryService = new MemoryService(memoryRepository);
+    const memoryController = new MemoryController(memoryService);
+
+    // 2. Estado da Sessão e Gerenciadores de Contexto
+    const sessionState = new SessionState();
+    const contextBuilder = new ContextBuilder(memoryService, logger);
+
+    // 3. Provedores de IA, Reconhecimento de Voz e Intenções
+    const aiProvider = new OllamaProvider();
+    const intentManager = new IntentManager(aiProvider, logger);
+    const wakeWordProvider = new VoskProvider();
+
+    // 4. Instanciação do Núcleo JarvisCore
+    const jarvis = new JarvisCore({
+        aiProvider,
+        memoryController,
+        contextBuilder,
+        intentManager,
+        sessionState,
+        logger,
+        wakeWordProvider,
     });
-    const whisper = new WhisperProvider();
-    const piper = new PiperProvider({
-        modelPath: path.join(process.cwd(), 'models', 'piper', 'pt_BR-faber-medium.onnx')
-    });
 
-    async function startPassiveListening() {
-        await wakeWordDetector.startListening(async () => {
-            console.log('\n🤖 J.A.R.V.I.S.: Sim, senhor?');
-            await piper.speak('Pois não?');
+    // 5. Configuração do Servidor Fastify (API HTTP)
+    const app = fastify({ logger: false });
+    await app.register(cors, { origin: '*' });
 
-            const sessionHistory: ChatMessage[] = [];
-            await runActiveConversationSession(sessionHistory);
-        });
-    }
+    // Rota de verificação do estado do sistema
+    app.get('/health', async () => ({
+        status: 'online',
+        session: jarvis.getSessionState().getSnapshot(),
+        timestamp: new Date().toISOString(),
+    }));
 
-    async function runActiveConversationSession(sessionHistory: ChatMessage[]) {
-        let isSessionActive = true;
+    // Rota principal para interação por texto
+    app.post<{ Body: { prompt: string; history?: ChatMessage[] } }>('/chat', async (request, reply) => {
+        const { prompt, history = [] } = request.body;
 
-        while (isSessionActive) {
-            console.log('🎙️ [Sessão Ativa] Escutando pergunta (5s)...');
-            const userPrompt = await whisper.transcribeAudioStream(5);
-
-            if (!userPrompt || userPrompt.trim().length === 0) {
-                console.log('🤫 Nenhum som/fala detectada. Encerrando sessão de conversa.');
-                isSessionActive = false;
-                break;
-            }
-
-            console.log(`\n💬 Você: "${userPrompt}"`);
-
-            const lowerPrompt = userPrompt.toLowerCase();
-            if (lowerPrompt.includes('obrigado') || lowerPrompt.includes('tchau') || lowerPrompt.includes('parar')) {
-                await piper.speak('Por nada. Fico à disposição.');
-                isSessionActive = false;
-                break;
-            }
-
-            const fullPayload = await contextBuilder.buildChatMessages(
-                userPrompt,
-                sessionHistory
-            );
-
-            console.log('🧠 Pensando...');
-            const assistantReply = await llm.chat(fullPayload);
-            console.log(`🤖 J.A.R.V.I.S.: "${assistantReply}"\n`);
-
-            sessionHistory.push({ role: 'user', content: userPrompt });
-            sessionHistory.push({ role: 'assistant', content: assistantReply });
-
-            await piper.speak(assistantReply);
+        if (!prompt) {
+            reply.status(400);
+            return { error: 'O parâmetro "prompt" é obrigatório.' };
         }
 
-        console.log('💤 Voltando para escuta passiva em segundo plano...\n');
-        startPassiveListening();
-    }
+        try {
+            const response = await jarvis.handleUserPrompt(prompt, history);
+            return {
+                response,
+                state: jarvis.getSessionState().getSnapshot(),
+            };
+        } catch (error) {
+            logger.error('Erro na rota /chat:', error as Error);
+            reply.status(500);
+            return { error: (error as Error).message };
+        }
+    });
 
-    startPassiveListening();
+    // 6. Inicialização do Servidor
+    const PORT = Number(process.env.PORT) || 3000;
+    const HOST = process.env.HOST || '0.0.0.0';
+
+    await app.listen({ port: PORT, host: HOST });
+    logger.info(`✅ J.A.R.V.I.S. ativo e escutando em http://${HOST}:${PORT}`);
+
+    // Opcional: Ativar detecção da palavra de ativação via áudio em segundo plano
+    // await jarvis.startWakeWordListening();
 }
 
-main().catch(console.error);
+bootstrap().catch((err) => {
+    console.error('💥 Falha crítica durante a inicialização do JARVIS:', err);
+    process.exit(1);
+});

@@ -1,6 +1,6 @@
 import { exec } from "node:child_process";
 import { promisify } from "util";
-import { AppError } from "../../shared/errors/AppError";
+import { AppError } from "../../shared/errors/AppError.js";
 
 
 const execPromise = promisify(exec)

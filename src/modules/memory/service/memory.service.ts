@@ -1,6 +1,6 @@
-import { IMemoryRepository } from '../repository/Imemory.repository';
+import { IMemoryRepository, FindRelevantOptions } from '../repository/ImemoryRepository.js';
 import { CreateMemoryDTO, UpdateMemoryDTO, MemoryResponseDTO } from '../dto/memory.dto.js';
-import { MemoryValidator } from '../validator/memory.validator.js';
+import { MemoryValidator } from '../validator/MemoryValidator.js';
 import { AppError } from '../../../shared/errors/AppError.js';
 import { MemoryEntity } from '../entity/memory.entity.js';
 
@@ -10,10 +10,15 @@ export class MemoryService {
     private toDTO(entity: MemoryEntity): MemoryResponseDTO {
         return {
             id: entity.id,
-            category: entity.category,
+            userId: entity.userId,
             content: entity.content,
+            category: entity.category,
             importance: entity.importance,
+            source: entity.source,
+            projectId: entity.projectId,
             createdAt: entity.createdAt,
+            updatedAt: entity.updatedAt,
+            lastAccessedAt: entity.lastAccessedAt,
         };
     }
 
@@ -23,7 +28,10 @@ export class MemoryService {
         return this.toDTO(memory);
     }
 
-    public async getMemoryById(id: number): Promise<MemoryResponseDTO> {
+    public async getMemoryById(id: string): Promise<MemoryResponseDTO> {
+        if (!id || id.trim().length === 0) {
+            throw new AppError('ID da memória não informado.', 400);
+        }
         const memory = await this.memoryRepository.findById(id);
         if (!memory) {
             throw new AppError(`Memória com ID ${id} não encontrada.`, 404);
@@ -44,7 +52,22 @@ export class MemoryService {
         return memories.map((m) => this.toDTO(m));
     }
 
-    public async updateMemory(id: number, data: UpdateMemoryDTO): Promise<MemoryResponseDTO> {
+    /**
+     * Recupera memórias relevantes para montar o contexto da IA sem lotar a memória RAM.
+     * Atualiza o carimbo lastAccessedAt de forma assíncrona.
+     */
+    public async getContextualMemories(options?: FindRelevantOptions): Promise<MemoryResponseDTO[]> {
+        const memories = await this.memoryRepository.findRelevant(options);
+
+        // Atualiza o carimbo de acesso em segundo plano
+        for (const memory of memories) {
+            void this.memoryRepository.updateLastAccessed(memory.id);
+        }
+
+        return memories.map((m) => this.toDTO(m));
+    }
+
+    public async updateMemory(id: string, data: UpdateMemoryDTO): Promise<MemoryResponseDTO> {
         MemoryValidator.validateUpdate(data);
         await this.getMemoryById(id);
 
@@ -55,7 +78,7 @@ export class MemoryService {
         return this.toDTO(updated);
     }
 
-    public async forgetMemory(id: number): Promise<void> {
+    public async forgetMemory(id: string): Promise<void> {
         await this.getMemoryById(id);
         const deleted = await this.memoryRepository.delete(id);
         if (!deleted) {

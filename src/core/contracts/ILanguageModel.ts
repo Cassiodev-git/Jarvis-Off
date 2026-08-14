@@ -1,13 +1,26 @@
-// src/core/contracts/ILanguageModel.ts
-
 export interface ChatMessage {
-    role: 'system' | 'user' | 'assistant';
+    role: 'user' | 'assistant' | 'system' | 'tool';
     content: string;
+}
+
+export interface LanguageModelOptions {
+    model?: string;
+    temperature?: number;
+    systemPrompt?: string;
+    maxTokens?: number;
 }
 
 export interface ILanguageModel {
     /**
-     * Envia o histórico de mensagens para a LLM e retorna a resposta.
+     * Envia uma mensagem simples e recebe a resposta textual completa.
      */
-    chat(messages: ChatMessage[]): Promise<string>;
+    generateText(prompt: string, options?: LanguageModelOptions): Promise<string>;
+
+    chat(messages: ChatMessage[], options?: LanguageModelOptions): Promise<string>;
+
+    streamText?(
+        prompt: string,
+        onChunk: (chunk: string) => void,
+        options?: LanguageModelOptions
+    ): Promise<string>;
 }

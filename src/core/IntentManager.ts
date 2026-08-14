@@ -1,110 +1,143 @@
-import { AIProvider } from '../infrastructure/ai/AIProvider.js';
+import { ILanguageModel } from './contracts/ILanguageModel.js';
+import { LoggerProvider } from '../infrastructure/logger/LoggerProvider.js';
 
 export type IntentType =
     | 'SAVE_MEMORY'
-    | 'QUERY_MEMORY'
-    | 'CODE_ASSIST'
     | 'CHANGE_MODE'
-    | 'CHANGE_PROJECT'
-    | 'SYSTEM_COMMAND'
-    | 'GENERAL_CHAT';
+    | 'OPEN_APPLICATION'
+    | 'CLOSE_APPLICATION'
+    | 'SYSTEM_SHUTDOWN'
+    | 'CHAT';
 
 export interface IntentResult {
     intent: IntentType;
     confidence: number;
-    extractedData?: Record<string, unknown>;
+    payload?: {
+        target?: string;
+        mode?: string;
+        rawContent?: string;
+        [key: string]: unknown;
+    };
+}
+
+interface IntentRule {
+    intent: IntentType;
+    patterns: RegExp[];
+    extractPayload?: (match: RegExpExecArray, text: string) => Record<string, unknown>;
 }
 
 export class IntentManager {
-    private readonly VALID_INTENTS: IntentType[] = [
-        'SAVE_MEMORY',
-        'QUERY_MEMORY',
-        'CODE_ASSIST',
-        'CHANGE_MODE',
-        'CHANGE_PROJECT',
-        'SYSTEM_COMMAND',
-        'GENERAL_CHAT',
+    // ✅ Construtor aceitando as dependências injetadas no index.ts
+    constructor(
+        private readonly aiProvider?: ILanguageModel,
+        private readonly logger?: LoggerProvider
+    ) {}
+
+    private readonly rules: IntentRule[] = [
+        // 1. Salvar memória
+        {
+            intent: 'SAVE_MEMORY',
+            patterns: [
+                /^(jarvis,?\s*|ei jarvis,?\s*)?(memorize|lembre-se|salve essa memória|guarde essa informação)\s*(que\s*)?/i,
+                /^anote\s+(que\s+)?/i,
+            ],
+            extractPayload: (_match, text) => ({
+                rawContent: text
+                    .replace(
+                        /^(jarvis,?\s*|ei jarvis,?\s*)?(memorize|lembre-se|salve essa memória|guarde essa informação|anote)\s*(que\s*)?/i,
+                        ''
+                    )
+                    .trim(),
+            }),
+        },
+
+        // 2. Mudança de Modo de Operação (ex: "vamos codar", "modo normal")
+        {
+            intent: 'CHANGE_MODE',
+            patterns: [
+                /^(vamos\s+codar|modo\s+dev|modo\s+desenvolvimento)/i,
+                /^(modo\s+normal|modo\s+padrão)/i,
+                /^(modo\s+estudo|vamos\s+estudar)/i,
+            ],
+            extractPayload: (_match, text) => {
+                const lower = text.toLowerCase();
+                if (lower.includes('codar') || lower.includes('dev') || lower.includes('desenvolvimento')) {
+                    return { mode: 'DEV' };
+                }
+                if (lower.includes('estudo') || lower.includes('estudar')) {
+                    return { mode: 'STUDY' };
+                }
+                return { mode: 'NORMAL' };
+            },
+        },
+
+        // 3. Abrir Aplicações (ex: "abra o VS Code", "inicie o navegador")
+        {
+            intent: 'OPEN_APPLICATION',
+            patterns: [
+                /^(jarvis,?\s*)?(abra|inicie|abrir|abram)\s+(o|a)?\s*(.+)/i,
+            ],
+            extractPayload: (match) => ({
+                target: match[3]?.trim(),
+            }),
+        },
+
+        // 4. Fechar Aplicações (ex: "feche o VS Code", "encerre o chrome")
+        {
+            intent: 'CLOSE_APPLICATION',
+            patterns: [
+                /^(jarvis,?\s*)?(feche|encerre|fechar)\s+(o|a)?\s*(.+)/i,
+            ],
+            extractPayload: (match) => ({
+                target: match[3]?.trim(),
+            }),
+        },
+
+        // 5. Desligamento do Assistente
+        {
+            intent: 'SYSTEM_SHUTDOWN',
+            patterns: [
+                /^(jarvis,?\s*)?(desligue-se|encerrar|fechar jarvis|desligar jarvis|tchau jarvis)/i,
+                /^(desligar|encerrar\s+sistema)$/i,
+            ],
+        },
     ];
 
-    constructor(private readonly aiProvider?: AIProvider) {}
-
-    public async analyze(userPrompt: string): Promise<IntentResult> {
-        const normalized = userPrompt.toLowerCase().trim();
-        const cleaned = normalized.replace(/^(jarvis,?\s*|ei jarvis,?\s*)/i, '');
-
-        // Regras estritas por Regex
-        if (
-            cleaned.startsWith('memorize') ||
-            cleaned.startsWith('lembre-se') ||
-            cleaned.includes('salve essa memória') ||
-            cleaned.includes('guarde essa informação')
-        ) {
-            return {
-                intent: 'SAVE_MEMORY',
-                confidence: 0.95,
-                extractedData: { rawText: userPrompt },
-            };
+    /**
+     * Analisa o prompt e retorna a intenção correspondente baseada em regras determinísticas.
+     */
+    public async analyze(prompt: string): Promise<IntentResult> {
+        if (!prompt || !prompt.trim()) {
+            return { intent: 'CHAT', confidence: 1.0 };
         }
 
-        if (cleaned.includes('modo de desenvolvimento') || cleaned.includes('vamos codar')) {
-            return {
-                intent: 'CHANGE_MODE',
-                confidence: 0.9,
-                extractedData: { targetMode: 'DEVELOPMENT' },
-            };
+        const cleanPrompt = prompt.trim();
+
+        for (const rule of this.rules) {
+            for (const pattern of rule.patterns) {
+                const match = pattern.exec(cleanPrompt);
+                if (match) {
+                    const payload = rule.extractPayload
+                        ? rule.extractPayload(match, cleanPrompt)
+                        : undefined;
+
+                    this.logger?.debug(`[IntentManager] Intenção detectada: ${rule.intent}`, { payload });
+
+                    return {
+                        intent: rule.intent,
+                        confidence: 1.0,
+                        payload,
+                    };
+                }
+            }
         }
 
-        if (cleaned.includes('modo de estudo') || cleaned.includes('vamos estudar')) {
-            return {
-                intent: 'CHANGE_MODE',
-                confidence: 0.9,
-                extractedData: { targetMode: 'STUDY' },
-            };
-        }
+        this.logger?.debug('[IntentManager] Nenhuma regra casou. Encaminhando para CHAT (LLM).');
 
-        // Para palavras muito curtas (ex: "teste", "ola"), força GENERAL_CHAT sem gastar recurso da IA
-        if (cleaned.length < 4) {
-            return { intent: 'GENERAL_CHAT', confidence: 0.9 };
-        }
-
-        if (this.aiProvider) {
-            return await this.classifyWithAI(userPrompt);
-        }
-
+        // Fallback: Se nenhuma regra determinística casar, encaminha para o LLM
         return {
-            intent: 'GENERAL_CHAT',
-            confidence: 0.7,
+            intent: 'CHAT',
+            confidence: 1.0,
         };
-    }
-
-    private async classifyWithAI(userPrompt: string): Promise<IntentResult> {
-        if (!this.aiProvider) {
-            return { intent: 'GENERAL_CHAT', confidence: 0.5 };
-        }
-
-        try {
-            const prompt = `Classifique a intenção do usuário em uma destas opções exatas: SAVE_MEMORY, QUERY_MEMORY, CODE_ASSIST, CHANGE_MODE, SYSTEM_COMMAND, GENERAL_CHAT.
-Responda ESTRITAMENTE em formato JSON: {"intent": "NOME_DA_INTENCAO", "confidence": 0.9}
-
-Mensagem: "${userPrompt}"`;
-
-            const rawResponse = await this.aiProvider.chat([{ role: 'user', content: prompt }]);
-            const cleanJson = rawResponse.replace(/```json|```/g, '').trim();
-            const parsed = JSON.parse(cleanJson);
-
-            const detectedIntent = this.VALID_INTENTS.includes(parsed.intent)
-                ? (parsed.intent as IntentType)
-                : 'GENERAL_CHAT';
-
-            return {
-                intent: detectedIntent,
-                confidence: parsed.confidence || 0.8,
-            };
-        } catch {
-            return {
-                intent: 'GENERAL_CHAT',
-                confidence: 0.5,
-            };
-        }
     }
 }

@@ -1,12 +1,26 @@
-// src/core/contracts/ISpeechToText.ts
+export interface SpeechToTextOptions {
+    language?: string;
+    sampleRate?: number;
+}
 
 export interface ISpeechToText {
     /**
-     * Grava o áudio do microfone por um período ou até detectar silêncio
-     * e retorna a transcrição exata em texto.
-     * 
-     * @param durationSeconds Tempo máximo limite de gravação (opcional)
-     * @returns Texto transcrito da fala do usuário
+     * Transcreve um buffer de áudio bruto (PCM / WAV) em texto.
      */
-    transcribeAudioStream(durationSeconds?: number): Promise<string>;
+    transcribeBuffer(audioBuffer: Buffer, options?: SpeechToTextOptions): Promise<string>;
+
+    /**
+     * Transcreve um arquivo de áudio no disco.
+     */
+    transcribeFile(filePath: string, options?: SpeechToTextOptions): Promise<string>;
+
+    /**
+     * Inicia a escuta contínua de áudio do microfone (se suportado pelo provider).
+     */
+    startListening?(onTranscription: (text: string) => void): void;
+    
+    /**
+     * Para a escuta contínua.
+     */
+    stopListening?(): void;
 }

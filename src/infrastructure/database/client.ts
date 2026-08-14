@@ -1,16 +1,20 @@
-import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
-import path from 'path';
-import fs from 'fs';
+import Database from 'better-sqlite3';
 import * as schema from './schema/index.js';
+import path from 'node:path';
+import fs from 'node:fs';
 
-const storageDir = path.resolve('src/infrastructure/database/storage');
-
+// Garante que a pasta de storage exista
+const storageDir = path.resolve(process.cwd(), 'src/infrastructure/database/storage');
 if (!fs.existsSync(storageDir)) {
-    fs.mkdirSync(storageDir, { recursive: true });
+  fs.mkdirSync(storageDir, { recursive: true });
 }
 
-const dbPath = path.join(storageDir, 'jarvis.db');
-const sqliteClient = new Database(dbPath);
+const dbPath = process.env.DATABASE_URL || path.join(storageDir, 'jarvis.db');
+const sqlite = new Database(dbPath);
 
-export const db = drizzle(sqliteClient, { schema });
+
+sqlite.pragma('foreign_keys = ON');
+
+export const db = drizzle(sqlite, { schema });
+export type DatabaseInstance = typeof db;

@@ -1,11 +1,13 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { users } from './users.js';
 
 export const settings = sqliteTable('settings', {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-    model: text('model').default('llama3.2:1b').notNull(),
-    language: text('language').default('pt-BR').notNull(),
-    wakeWord: text('wake_word').default('jarvis').notNull(),
-    voice: text('voice').default('pt_BR-faber-medium').notNull(),
-    volume: integer('volume').default(80).notNull(),
-    updatedAt: text('updated_at').default('CURRENT_TIMESTAMP').notNull(),
+    id: text('id').primaryKey(),
+    userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    key: text('key').notNull(),
+    value: text('value').notNull(),
+    updatedAt: text('updated_at').notNull(),
 });
+
+export type SettingEntity = typeof settings.$inferSelect;
+export type NewSettingEntity = typeof settings.$inferInsert;

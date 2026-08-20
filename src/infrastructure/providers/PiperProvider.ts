@@ -1,9 +1,10 @@
-import { spawn, ChildProcess } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { ITextToSpeech, TextToSpeechOptions } from '../../core/contracts/ITextToSpeech.js';
 import { TempCleaner } from '../../ultis/TempCleaner.js';
 import { AppError } from '../../shared/errors/AppError.js';
+import { AudioPlayer } from '../speech/AudioPlayer.js';
 
 export interface PiperConfig {
     piperPath?: string;
@@ -16,15 +17,14 @@ export class PiperProvider implements ITextToSpeech {
     private readonly modelPath: string;
     private readonly outputDir: string;
     private readonly cleaner: TempCleaner;
-    private currentPlayProcess: ChildProcess | null = null;
-    private currentPlayingFile: string | null = null;
+    private readonly audioPlayer = new AudioPlayer();
 
     constructor(config: PiperConfig = {}) {
         // Executável 'piper' na raiz ou caminho customizado
         this.piperPath = config.piperPath || path.resolve(process.cwd(), 'piper', 'piper');
 
         // Modelo ONNX do Piper
-        this.modelPath = config.modelPath || path.resolve(process.cwd(), 'piper', 'models', 'pt_BR-faber-medium.onnx');
+        this.modelPath = config.modelPath || path.resolve(process.cwd(), 'models', 'piper', 'pt_BR-faber-medium.onnx');
 
         // Pasta /temp na raiz do projeto
         this.outputDir = config.outputDir || path.resolve(process.cwd(), 'temp');
@@ -113,8 +113,8 @@ export class PiperProvider implements ITextToSpeech {
             // 1. Gera o arquivo WAV usando a síntese oficial
             await this.synthesizeToFile(text, tempWavPath, options);
 
-            // 2. Reproduz via aplay
-            await this.playAudio(tempWavPath);
+            // 2. Reproduz o áudio através do adaptador de infraestrutura
+            await this.audioPlayer.speak(tempWavPath);
         } catch (error) {
             if (error instanceof AppError) {
                 console.error(`❌ [Piper] Erro (${error.statusCode}): ${error.message}`);
@@ -125,9 +125,6 @@ export class PiperProvider implements ITextToSpeech {
             // 3. Garante a remoção do arquivo temporário
             this.deleteFileIfExists(tempWavPath);
 
-            if (this.currentPlayingFile === tempWavPath) {
-                this.currentPlayingFile = null;
-            }
         }
     }
 
@@ -135,15 +132,9 @@ export class PiperProvider implements ITextToSpeech {
      * Interrompe a fala atual e apaga o arquivo temporário em execução
      */
     public async stop(): Promise<void> {
-        if (this.currentPlayProcess) {
+        if (this.audioPlayer) {
             console.log('🔇 [Piper] Interrompendo áudio...');
-            this.currentPlayProcess.kill();
-            this.currentPlayProcess = null;
-        }
-
-        if (this.currentPlayingFile) {
-            this.deleteFileIfExists(this.currentPlayingFile);
-            this.currentPlayingFile = null;
+            this.audioPlayer.stop();
         }
     }
 
@@ -153,30 +144,6 @@ export class PiperProvider implements ITextToSpeech {
     public async generateAudioFile(text: string, outputPath?: string): Promise<string> {
         const targetPath = outputPath || path.join(this.outputDir, `speech_${Date.now()}.wav`);
         return this.synthesizeToFile(text, targetPath);
-    }
-
-    /**
-     * Executa o aplay para tocar o áudio gerado
-     */
-    private playAudio(audioPath: string): Promise<void> {
-        return new Promise((resolve, reject) => {
-            this.currentPlayingFile = audioPath;
-            this.currentPlayProcess = spawn('aplay', ['-q', audioPath]);
-
-            this.currentPlayProcess.on('close', (code) => {
-                this.currentPlayProcess = null;
-                if (code === 0 || code === null) {
-                    resolve();
-                } else {
-                    reject(new AppError(`Erro ao reproduzir áudio via aplay (código ${code})`, 500));
-                }
-            });
-
-            this.currentPlayProcess.on('error', (err) => {
-                this.currentPlayProcess = null;
-                reject(new AppError(`Falha ao executar aplay: ${err.message}`, 500));
-            });
-        });
     }
 
     /**

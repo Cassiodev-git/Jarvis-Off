@@ -9,7 +9,7 @@ export interface SessionStateSnapshot {
 
 export class SessionState {
     private mode: string = 'NORMAL';
-    private project: string = 'J.A.R.V.I.S.';
+    private project: string = 'Jarvis';
     private status: AssistantStatus = 'IDLE';
 
     // Getters
@@ -55,7 +55,7 @@ export class SessionState {
      */
     public reset(): void {
         this.mode = 'NORMAL';
-        this.project = 'J.A.R.V.I.S.';
+        this.project = 'Jarvis';
         this.status = 'IDLE';
     }
 }

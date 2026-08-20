@@ -7,6 +7,10 @@ import { SessionState } from './services/SessionState.js';
 import { MemoryController } from '../modules/memory/controller/memory.controller.js';
 import { LoggerProvider } from '../infrastructure/logger/LoggerProvider.js';
 import { AppError } from '../shared/errors/AppError.js';
+import { CommandDispatcher } from '../modules/system/CommandDispatcher.js';
+import { PhoneticNormalizer } from './services/PhoneticNormalizer.js';
+import { ResponseFormatter } from './services/ResponseFormatter.js';
+import { MorningBriefingService } from './services/MorningBriefingService.js';
 
 export interface JarvisCoreDependencies {
     aiProvider: ILanguageModel;
@@ -15,6 +19,8 @@ export interface JarvisCoreDependencies {
     intentManager: IntentManager;
     sessionState: SessionState;
     logger: LoggerProvider;
+    commandDispatcher?: CommandDispatcher;
+    morningBriefingService?: MorningBriefingService;
     ttsProvider?: ITextToSpeech;
     wakeWordProvider?: IWakeWord;
 }
@@ -26,6 +32,8 @@ export class JarvisCore {
     private readonly intentManager: IntentManager;
     private readonly sessionState: SessionState;
     private readonly logger: LoggerProvider;
+    private readonly commandDispatcher?: CommandDispatcher;
+    private readonly morningBriefingService?: MorningBriefingService;
     private readonly ttsProvider?: ITextToSpeech;
     private readonly wakeWordProvider?: IWakeWord;
 
@@ -36,6 +44,8 @@ export class JarvisCore {
         this.intentManager = deps.intentManager;
         this.sessionState = deps.sessionState;
         this.logger = deps.logger;
+        this.commandDispatcher = deps.commandDispatcher;
+        this.morningBriefingService = deps.morningBriefingService;
         this.ttsProvider = deps.ttsProvider;
         this.wakeWordProvider = deps.wakeWordProvider;
     }
@@ -64,7 +74,9 @@ export class JarvisCore {
             let responseText = '';
 
             // 2. Trata comandos determinísticos ou delega ao LLM
-            if (intentResult.intent === 'SAVE_MEMORY') {
+            if (intentResult.intent === 'GOOD_MORNING' && this.morningBriefingService) {
+                responseText = await this.morningBriefingService.createBriefing();
+            } else if (intentResult.intent === 'SAVE_MEMORY') {
                 responseText = await this.handleSaveMemoryIntent(
                     prompt,
                     intentResult.payload?.rawContent as string | undefined
@@ -73,9 +85,20 @@ export class JarvisCore {
                 const targetMode = (intentResult.payload?.mode as string) || 'NORMAL';
                 this.sessionState.setMode(targetMode);
                 responseText = `Modo de operação alterado para ${targetMode}.`;
+            } else if (intentResult.intent === 'OPEN_APPLICATION' && this.commandDispatcher) {
+                const target = String(intentResult.payload?.target ?? '');
+                const result = await this.commandDispatcher.dispatch('OPEN_APPLICATION', {
+                    appName: this.normalizeApplicationName(target),
+                });
+                responseText = result.success ? result.message : `Não foi possível abrir a aplicação: ${result.message}`;
+            } else if (intentResult.intent === 'RUN_SCRIPT' && this.commandDispatcher) {
+                const scriptName = String(intentResult.payload?.scriptName ?? '');
+                const result = await this.commandDispatcher.dispatch('RUN_SCRIPT', { scriptName });
+                responseText = result.success ? result.message : `Não foi possível executar o script: ${result.message}`;
             } else {
+                const normalizedPrompt = PhoneticNormalizer.normalize(prompt);
                 const snapshot = this.sessionState.getSnapshot();
-                const messages = await this.contextBuilder.buildChatMessages(prompt, history, {
+                const messages = await this.contextBuilder.buildChatMessages(normalizedPrompt, history, {
                     activeMode: snapshot.mode,
                     activeProject: snapshot.project,
                 });
@@ -83,8 +106,10 @@ export class JarvisCore {
                 responseText = await this.aiProvider.chat(messages);
             }
 
-            // 3. Reproduz áudio via sintetizador de voz (caso configurado e solicitado)
-            if (options?.speakResponse && this.ttsProvider) {
+            responseText = ResponseFormatter.format(responseText);
+
+            // 3. Encaminha toda resposta para o contrato de TTS, salvo opt-out explícito.
+            if (this.ttsProvider && options?.speakResponse !== false) {
                 this.sessionState.setStatus('SPEAKING');
                 await this.ttsProvider.speak(responseText);
             }
@@ -104,6 +129,26 @@ export class JarvisCore {
                 500
             );
         }
+    }
+
+    private normalizeApplicationName(target: string): string {
+        const normalized = target
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .trim();
+
+        const aliases: Record<string, string> = {
+            'vs code': 'code',
+            'visual studio code': 'code',
+            chrome: 'google-chrome',
+            'google chrome': 'google-chrome',
+            navegador: 'google-chrome',
+            brave: 'brave-browser',
+            'gerenciador de arquivos': 'nautilus',
+        };
+
+        return aliases[normalized] ?? normalized;
     }
 
     /**

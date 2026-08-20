@@ -22,5 +22,5 @@ export interface ISpeechToText {
     /**
      * Para a escuta contínua.
      */
-    stopListening?(): void;
+    stopListening?(): void | Promise<void>;
 }

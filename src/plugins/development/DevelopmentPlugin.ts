@@ -1,32 +1,26 @@
-import { exec } from "node:child_process";
-import { promisify } from "util";
-import { AppError } from "../../shared/errors/AppError.js";
+import { AppError } from '../../shared/errors/AppError.js';
+import { ConsoleLoggerProvider } from '../../infrastructure/logger/ConsoleLoggerProvider.js';
+import { LoggerProvider } from '../../infrastructure/logger/LoggerProvider.js';
+import { AppExecutor } from '../../modules/system/AppExecutor.js';
 
+export class DevelopmentPlugin {
+    private readonly appExecutor: AppExecutor;
 
-const execPromise = promisify(exec)
+    constructor(logger: LoggerProvider = new ConsoleLoggerProvider()) {
+        this.appExecutor = new AppExecutor(logger);
+    }
 
-export class DevelopmentPlugin{
-    public async openEnvironment(): Promise<string>{
-        console.log('Iniciando comandos de desenvolvedor...')
-        try{
-            // Abre o vsCode 
-            execPromise('code &').catch((err) => {
-                throw new AppError(`Falha ao abrir o vsCode: ${err.menssage}`, 500)
-            })
-            //Abre o brave 
-            const braveCommand = '(brave-browser || brave || flatpak run com.brave.Browser) >/dev/null 2>&1 &'
-            execPromise(braveCommand).catch((err) => {
-                throw new AppError(`Falha ao abrir o navegador Brave: ${err.message}`, 500);
-            });
-            return 'Anbiente de desenvolvimento iniciado...'
-        }catch(error){
-            if(error instanceof AppError){
-                throw error;
-            }
-            throw new AppError(
-                `Erro inesperado no plugin de desenvolvimento ${(error as Error).message}`,
-                500
-            )
+    public async openEnvironment(): Promise<string> {
+        const results = await Promise.all([
+            this.appExecutor.execute({ appName: 'code' }),
+            this.appExecutor.execute({ appName: 'brave-browser' }),
+        ]);
+
+        const failure = results.find((result) => !result.success);
+        if (failure) {
+            throw new AppError(failure.error ?? failure.message, 500);
         }
+
+        return 'Ambiente de desenvolvimento iniciado.';
     }
 }

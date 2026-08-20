@@ -18,6 +18,16 @@ import { MemoryController } from './modules/memory/controller/memory.controller.
 import { ConsoleLoggerProvider } from './infrastructure/logger/ConsoleLoggerProvider.js';
 import { VoskProvider } from './infrastructure/providers/VoskProvider.js';
 import { OllamaProvider } from './infrastructure/providers/OllamaProvider.js'; // Ajuste conforme seu provedor concreto (ex: GeminiProvider)
+import { PiperProvider } from './infrastructure/providers/PiperProvider.js';
+import { ContinuousVoiceListener } from './infrastructure/speech/ContinuousVoiceListener.js';
+import { HybridSpeechProvider } from './infrastructure/speech/HybridSpeechProvider.js';
+import { env } from './config/env.js';
+import { CommandDispatcher } from './modules/system/CommandDispatcher.js';
+import { AppError } from './shared/errors/AppError.js';
+import { WttrWeatherProvider } from './infrastructure/providers/WttrWeatherProvider.js';
+import { ExchangeRateProvider } from './infrastructure/providers/ExchangeRateProvider.js';
+import { MorningBriefingService } from './core/services/MorningBriefingService.js';
+import { WakePhraseMatcher } from './core/services/WakePhraseMatcher.js';
 
 async function bootstrap() {
     const logger = new ConsoleLoggerProvider();
@@ -35,7 +45,17 @@ async function bootstrap() {
     // 3. Provedores de IA, Reconhecimento de Voz e Intenções
     const aiProvider = new OllamaProvider();
     const intentManager = new IntentManager(aiProvider, logger);
-    const wakeWordProvider = new VoskProvider();
+    const commandDispatcher = new CommandDispatcher(logger);
+    const morningBriefingService = new MorningBriefingService(
+        new WttrWeatherProvider(),
+        new ExchangeRateProvider(),
+        env.WEATHER_CITY,
+    );
+    const ttsProvider = new PiperProvider({
+        piperPath: env.PIPER_PATH,
+        modelPath: env.PIPER_MODEL_PATH,
+    });
+    const wakeWordProvider = env.VOICE_MODE ? undefined : new VoskProvider();
 
     // 4. Instanciação do Núcleo JarvisCore
     const jarvis = new JarvisCore({
@@ -45,12 +65,15 @@ async function bootstrap() {
         intentManager,
         sessionState,
         logger,
+        commandDispatcher,
+        morningBriefingService,
+        ttsProvider,
         wakeWordProvider,
     });
 
     // 5. Configuração do Servidor Fastify (API HTTP)
     const app = fastify({ logger: false });
-    await app.register(cors, { origin: '*' });
+    await app.register(cors, { origin: env.CORS_ORIGINS });
 
     // Rota de verificação do estado do sistema
     app.get('/health', async () => ({
@@ -63,8 +86,8 @@ async function bootstrap() {
     app.post<{ Body: { prompt: string; history?: ChatMessage[] } }>('/chat', async (request, reply) => {
         const { prompt, history = [] } = request.body;
 
-        if (!prompt) {
-            reply.status(400);
+        if (typeof prompt !== 'string' || !prompt.trim()) {
+            reply.code(400);
             return { error: 'O parâmetro "prompt" é obrigatório.' };
         }
 
@@ -76,17 +99,50 @@ async function bootstrap() {
             };
         } catch (error) {
             logger.error('Erro na rota /chat:', error as Error);
-            reply.status(500);
-            return { error: (error as Error).message };
+            const statusCode = error instanceof AppError ? error.statusCode : 500;
+            reply.code(statusCode);
+            return { error: error instanceof Error ? error.message : 'Erro interno do servidor.' };
         }
     });
 
     // 6. Inicialização do Servidor
-    const PORT = Number(process.env.PORT) || 3000;
-    const HOST = process.env.HOST || '0.0.0.0';
+    const PORT = env.PORT;
+    const HOST = env.HOST;
 
     await app.listen({ port: PORT, host: HOST });
     logger.info(`✅ J.A.R.V.I.S. ativo e escutando em http://${HOST}:${PORT}`);
+
+    if (env.VOICE_MODE) {
+        const speechProvider = new HybridSpeechProvider({
+            modelPath: env.VOSK_MODEL_PATH,
+            device: env.VOICE_AUDIO_DEVICE,
+            soxPath: env.SOX_PATH,
+            audioEnhancement: env.VOICE_AUDIO_ENHANCEMENT,
+            executable: env.WHISPER_PATH,
+            model: env.WHISPER_MODEL,
+            longPhraseWordThreshold: env.STT_LONG_PHRASE_WORDS,
+            longPhraseSecondsThreshold: env.STT_LONG_PHRASE_SECONDS,
+        }, logger);
+        const voiceListener = new ContinuousVoiceListener(
+            speechProvider,
+            async (transcription) => {
+                await jarvis.handleUserPrompt(transcription);
+            },
+            logger,
+            {
+                idleTimeoutMs: env.VOICE_IDLE_TIMEOUT_MS,
+                isWakePhrase: (transcription) => WakePhraseMatcher.matches(transcription),
+                onWake: async () => jarvis.speak('Estou acordado, senhor.'),
+            },
+        );
+
+        voiceListener.start();
+        process.once('SIGINT', async () => {
+            await voiceListener.stop();
+            await app.close();
+            process.exit(0);
+        });
+    }
 
     // Opcional: Ativar detecção da palavra de ativação via áudio em segundo plano
     // await jarvis.startWakeWordListening();

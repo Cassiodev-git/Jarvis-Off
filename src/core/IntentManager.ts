@@ -1,10 +1,14 @@
 import { ILanguageModel } from './contracts/ILanguageModel.js';
 import { LoggerProvider } from '../infrastructure/logger/LoggerProvider.js';
+import { IntentPayloadSanitizer } from './services/IntentPayloadSanitizer.js';
+import { PhoneticNormalizer } from './services/PhoneticNormalizer.js';
 
 export type IntentType =
     | 'SAVE_MEMORY'
+    | 'GOOD_MORNING'
     | 'CHANGE_MODE'
     | 'OPEN_APPLICATION'
+    | 'RUN_SCRIPT'
     | 'CLOSE_APPLICATION'
     | 'SYSTEM_SHUTDOWN'
     | 'CHAT';
@@ -34,6 +38,14 @@ export class IntentManager {
     ) {}
 
     private readonly rules: IntentRule[] = [
+        // 0. Briefing matinal
+        {
+            intent: 'GOOD_MORNING',
+            patterns: [
+                /^(jarvis,?\s*)?bom\s+dia\b/i,
+            ],
+        },
+
         // 1. Salvar memória
         {
             intent: 'SAVE_MEMORY',
@@ -78,29 +90,42 @@ export class IntentManager {
                 /^(jarvis,?\s*)?(abra|inicie|abrir|abram)\s+(o|a)?\s*(.+)/i,
             ],
             extractPayload: (match) => ({
-                target: match[3]?.trim(),
+                target: IntentPayloadSanitizer.sanitizeApplicationTarget(match[4] ?? ''),
             }),
         },
 
-        // 4. Fechar Aplicações (ex: "feche o VS Code", "encerre o chrome")
+        // 4. Executar scripts autorizados (ex: "execute o script typecheck")
+        {
+            intent: 'RUN_SCRIPT',
+            patterns: [
+                /^(jarvis,?\s*)?(execute|executar|rode|rodar|run)\s+(o\s+)?(?:script\s+)?(.+)/i,
+            ],
+            extractPayload: (match) => ({
+                scriptName: IntentPayloadSanitizer.sanitizeScriptName(match[4] ?? ''),
+            }),
+        },
+
+        // 5. Desligamento do Assistente (avaliado antes de fechar aplicações)
+        {
+            intent: 'SYSTEM_SHUTDOWN',
+            patterns: [
+                /^(jarvis,?\s*)?(desligue(?:-se)?|tchau)\s*(jarvis|sistema)?$/i,
+                /^(jarvis,?\s*)?(feche)\s+(o\s+)?(jarvis|sistema)$/i,
+                /^(desligar|encerrar)\s+(jarvis|sistema)$/i,
+            ],
+        },
+
+        // 6. Fechar Aplicações (ex: "feche o VS Code", "encerre o chrome")
         {
             intent: 'CLOSE_APPLICATION',
             patterns: [
                 /^(jarvis,?\s*)?(feche|encerre|fechar)\s+(o|a)?\s*(.+)/i,
             ],
             extractPayload: (match) => ({
-                target: match[3]?.trim(),
+                target: IntentPayloadSanitizer.sanitizeApplicationTarget(match[4] ?? ''),
             }),
         },
 
-        // 5. Desligamento do Assistente
-        {
-            intent: 'SYSTEM_SHUTDOWN',
-            patterns: [
-                /^(jarvis,?\s*)?(desligue-se|encerrar|fechar jarvis|desligar jarvis|tchau jarvis)/i,
-                /^(desligar|encerrar\s+sistema)$/i,
-            ],
-        },
     ];
 
     /**
@@ -111,7 +136,7 @@ export class IntentManager {
             return { intent: 'CHAT', confidence: 1.0 };
         }
 
-        const cleanPrompt = prompt.trim();
+        const cleanPrompt = PhoneticNormalizer.normalize(prompt);
 
         for (const rule of this.rules) {
             for (const pattern of rule.patterns) {

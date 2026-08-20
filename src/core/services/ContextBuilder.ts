@@ -8,64 +8,62 @@ export interface ContextOptions {
 }
 
 export class ContextBuilder {
-    // ✅ Injeta o logger no construtor
     constructor(
         private readonly memoryService: MemoryService,
         private readonly logger?: LoggerProvider
     ) {}
 
-    /**
-     * Monta o prompt de sistema injetando memórias relevantes e o estado atual do sistema.
-     */
     public async buildSystemPrompt(options?: ContextOptions): Promise<string> {
         let memoryContext = 'Nenhuma memória cadastrada no momento.';
 
         try {
             const memories = await this.memoryService.listAllMemories();
 
-            // Filtra memórias com importância >= 2 para não poluir a janela de contexto
             if (memories && memories.length > 0) {
                 const filteredMemories = memories
                     .filter((m) => m.importance >= 2)
-                    .map((m) => `- [${m.category.toUpperCase()}]: ${m.content}`);
+                    .map((m) => `• [${m.category.toUpperCase()}]: ${m.content}`);
 
                 if (filteredMemories.length > 0) {
                     memoryContext = filteredMemories.join('\n');
                 }
             }
         } catch (error) {
-            // ✅ Usa o logger injetado em vez do console.error nativo
             if (this.logger) {
                 this.logger.error('[ContextBuilder] Falha ao recuperar memórias do banco:', error);
             } else {
                 console.error('⚠️ [ContextBuilder] Falha ao recuperar memórias do banco:', error);
             }
             
-            memoryContext = 'Aviso: Falha temporária ao carregar memórias de longo prazo.';
+            memoryContext = 'Aviso: Falha temporária ao carregar memórias.';
         }
 
         const mode = options?.activeMode || 'NORMAL';
         const project = options?.activeProject || 'Nenhum projeto selecionado';
 
-        return `Você é o J.A.R.V.I.S., um assistente pessoal e parceiro de desenvolvimento local.
-Responda de forma direta, clara, objetiva e profissional em português do Brasil.
+        return `Você é Jarvis, um assistente pessoal local e direto do desenvolvedor.
 
-[ESTADO ATUAL]
+---
+### ESTADO DO SISTEMA
 - Modo de Operação: ${mode}
 - Projeto Ativo: ${project}
 
-[MEMÓRIAS DE LONGO PRAZO RELEVANTES]
+### MEMÓRIAS CADASTRADAS (SEUS FATOS CONHECIDOS)
 ${memoryContext}
+---
 
-[DIRETRIZES DE COMPORTAMENTO]
-1. Se a dúvida for sobre desenvolvimento, aplique boas práticas de software (Clean Code, SOLID).
-2. Não invente informações sobre o usuário ou sobre o projeto que não estejam nas memórias acima.
-3. Mantenha respostas sucintas e conversacionais (evite formatações visuais excessivas ou blocos longos de texto para facilitar a síntese de voz).`;
+### REGRAS DE IDENTIDADE E RESPOSTA OBRIGATÓRIAS (VIOLAÇÕES SERÃO REJEITADAS):
+1. Seu nome falado e escrito é sempre "Jarvis". Nunca escreva ou pronuncie "J.A.R.V.I.S.".
+2. Trate o usuário sempre como "senhor". Não o chame por Cássio, Cassio ou pelo nome completo.
+3. Termine toda resposta com "senhor".
+4. A entrada pode conter erros de transcrição, sotaque ou fonética. Interprete a intenção pelo contexto, sem inventar detalhes; se houver dúvida real, faça uma pergunta curta.
+5. PROIBIDO pedir desculpas ("Peço desculpas", "Sinto muito", "Como uma IA", etc.).
+6. PROIBIDO dizer que "não tem acesso a dados/histórico". As memórias acima SÃO o seu acesso oficial.
+7. Responda DIRETO AO PONTO. Sem preâmbulos, saudações longas ou enrolação.
+8. Se a informação solicitada estiver nas "MEMÓRIAS CADASTRADAS", afirme o fato de forma simples e direta.
+9. Se a informação NÃO estiver gravada, responda apenas: "Não tenho essa informação registrada no banco, senhor."`;
     }
 
-    /**
-     * Prepara o array completo de mensagens para ser enviado ao provedor de IA (LLM).
-     */
     public async buildChatMessages(
         userMessage: string,
         history: ChatMessage[] = [],

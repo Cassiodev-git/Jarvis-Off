@@ -25,7 +25,7 @@ export class OllamaProvider implements ILanguageModel {
                     system: options?.systemPrompt,
                     stream: false,
                     options: {
-                        temperature: options?.temperature ?? 0.7,
+                        temperature: options?.temperature ?? 0.1,
                         num_predict: options?.maxTokens,
                     },
                 }),

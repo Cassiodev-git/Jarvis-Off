@@ -28,6 +28,10 @@ export class MemoryController {
         return await this.memoryService.listMemoriesByCategory(category);
     }
 
+    public async search(query: string, limit = 5): Promise<MemoryResponseDTO[]> {
+        return await this.memoryService.searchMemories(query, limit);
+    }
+
     public async update(id: string, data: UpdateMemoryDTO): Promise<MemoryResponseDTO> {
         //this.validateId(id);
         return await this.memoryService.updateMemory(id, data);

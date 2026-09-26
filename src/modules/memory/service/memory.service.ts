@@ -52,6 +52,14 @@ export class MemoryService {
         return memories.map((m) => this.toDTO(m));
     }
 
+    public async searchMemories(query: string, limit = 5): Promise<MemoryResponseDTO[]> {
+        if (!query || query.trim().length < 2) {
+            throw new AppError('Informe um trecho válido da memória para busca.', 400);
+        }
+        const memories = await this.memoryRepository.searchByContent(query.trim(), limit);
+        return memories.map((m) => this.toDTO(m));
+    }
+
     /**
      * Recupera memórias relevantes para montar o contexto da IA sem lotar a memória RAM.
      * Atualiza o carimbo lastAccessedAt de forma assíncrona.

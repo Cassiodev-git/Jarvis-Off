@@ -1,6 +1,8 @@
 import { MemoryService } from '../../modules/memory/service/memory.service.js';
 import { ChatMessage } from '../contracts/ILanguageModel.js';
 import { LoggerProvider } from '../../infrastructure/logger/LoggerProvider.js';
+import { BEHAVIOR_PROMPT } from '../../config/behaviorPrompt.js';
+import { env } from '../../config/env.js';
 
 export interface ContextOptions {
     activeMode?: string;
@@ -15,13 +17,17 @@ export class ContextBuilder {
 
     public async buildSystemPrompt(options?: ContextOptions): Promise<string> {
         let memoryContext = 'Nenhuma memória cadastrada no momento.';
+        const project = options?.activeProject;
 
         try {
-            const memories = await this.memoryService.listAllMemories();
+            const memories = await this.memoryService.getContextualMemories({
+                minImportance: 2,
+                projectId: project,
+                limit: 20,
+            });
 
             if (memories && memories.length > 0) {
                 const filteredMemories = memories
-                    .filter((m) => m.importance >= 2)
                     .map((m) => `• [${m.category.toUpperCase()}]: ${m.content}`);
 
                 if (filteredMemories.length > 0) {
@@ -39,29 +45,20 @@ export class ContextBuilder {
         }
 
         const mode = options?.activeMode || 'NORMAL';
-        const project = options?.activeProject || 'Nenhum projeto selecionado';
+        const activeProject = project || 'Nenhum projeto selecionado';
 
-        return `Você é Jarvis, um assistente pessoal local e direto do desenvolvedor.
+        return `${BEHAVIOR_PROMPT}
 
 ---
 ### ESTADO DO SISTEMA
 - Modo de Operação: ${mode}
-- Projeto Ativo: ${project}
+- Projeto Ativo: ${activeProject}
 
 ### MEMÓRIAS CADASTRADAS (SEUS FATOS CONHECIDOS)
 ${memoryContext}
 ---
 
-### REGRAS DE IDENTIDADE E RESPOSTA OBRIGATÓRIAS (VIOLAÇÕES SERÃO REJEITADAS):
-1. Seu nome falado e escrito é sempre "Jarvis". Nunca escreva ou pronuncie "J.A.R.V.I.S.".
-2. Trate o usuário sempre como "senhor". Não o chame por Cássio, Cassio ou pelo nome completo.
-3. Termine toda resposta com "senhor".
-4. A entrada pode conter erros de transcrição, sotaque ou fonética. Interprete a intenção pelo contexto, sem inventar detalhes; se houver dúvida real, faça uma pergunta curta.
-5. PROIBIDO pedir desculpas ("Peço desculpas", "Sinto muito", "Como uma IA", etc.).
-6. PROIBIDO dizer que "não tem acesso a dados/histórico". As memórias acima SÃO o seu acesso oficial.
-7. Responda DIRETO AO PONTO. Sem preâmbulos, saudações longas ou enrolação.
-8. Se a informação solicitada estiver nas "MEMÓRIAS CADASTRADAS", afirme o fato de forma simples e direta.
-9. Se a informação NÃO estiver gravada, responda apenas: "Não tenho essa informação registrada no banco, senhor."`;
+`;
     }
 
     public async buildChatMessages(
@@ -73,7 +70,7 @@ ${memoryContext}
 
         return [
             { role: 'system', content: systemPrompt },
-            ...history,
+            ...history.slice(-env.MAX_HISTORY_MESSAGES),
             { role: 'user', content: userMessage },
         ];
     }

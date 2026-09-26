@@ -1,4 +1,4 @@
-import { eq, gte, and, desc, or, isNull } from 'drizzle-orm';
+import { eq, gte, and, desc, or, isNull, like } from 'drizzle-orm';
 import { db, DatabaseInstance } from '../../../infrastructure/database/client.js';
 import { memories, MemoryEntity as MemorySchemaEntity } from '../../../infrastructure/database/schema/memories.js';
 import { MemoryEntity } from '../entity/memory.entity.js';
@@ -73,6 +73,17 @@ export class MemoryRepository implements IMemoryRepository {
             .select()
             .from(memories)
             .where(eq(memories.category, category));
+
+        return rows.map((row) => this.toEntity(row));
+    }
+
+    public async searchByContent(query: string, limit = 5): Promise<MemoryEntity[]> {
+        const rows = await this.database
+            .select()
+            .from(memories)
+            .where(like(memories.content, `%${query}%`))
+            .orderBy(desc(memories.importance), desc(memories.updatedAt))
+            .limit(limit);
 
         return rows.map((row) => this.toEntity(row));
     }

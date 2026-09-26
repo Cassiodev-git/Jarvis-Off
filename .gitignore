@@ -19,3 +19,7 @@ dist/
 npm-debug.log*
 #pastas
 tmp/
+
+# Perfil e arquivos temporários do Jarvis
+.jarvis-browser-profile/
+temp/

@@ -13,6 +13,7 @@ export interface IMemoryRepository {
     findById(id: string): Promise<MemoryEntity | null>;
     findAll(): Promise<MemoryEntity[]>;
     findByCategory(category: string): Promise<MemoryEntity[]>;
+    searchByContent(query: string, limit?: number): Promise<MemoryEntity[]>;
     findRelevant(options?: FindRelevantOptions): Promise<MemoryEntity[]>;
     update(id: string, data: UpdateMemoryDTO): Promise<MemoryEntity | null>;
     updateLastAccessed(id: string, accessedAt?: string): Promise<void>;

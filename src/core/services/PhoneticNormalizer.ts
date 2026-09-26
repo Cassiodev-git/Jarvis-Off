@@ -16,6 +16,11 @@ export class PhoneticNormalizer {
         [/\b(?:salva|salvar)\b/gi, 'salve'],
         [/\b(?:guarda|guardar)\b/gi, 'guarde'],
         [/\b(?:anota|anotar)\b/gi, 'anote'],
+        [/\b(?:altera|alterar|edita|editar|muda|mudar)\b/gi, 'altere'],
+        [/\b(?:apaga|apagar|remove|remover|esquece|esquecer)\b/gi, 'apague'],
+        [/\b(?:busca|buscar|pesquisa|pesquisar|procura|procurar)\b/gi, 'busque'],
+        [/\b(?:lista|listar)\b/gi, 'liste'],
+        [/\b(?:mostra|mostrar)\b/gi, 'mostre'],
         [/\b(?:desliga|desligar)\b/gi, 'desligue'],
     ];
 

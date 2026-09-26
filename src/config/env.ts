@@ -28,6 +28,25 @@ export const env = {
         .split(',')
         .map((origin) => origin.trim())
         .filter(Boolean),
+    NEWS_MAX_RESULTS: Math.min(Math.max(Number(process.env.NEWS_MAX_RESULTS) || 5, 1), 10),
+    NEWS_TIMEOUT_MS: Number(process.env.NEWS_TIMEOUT_MS) || 7000,
+    NEWS_CACHE_TTL_MS: Number(process.env.NEWS_CACHE_TTL_MS) || 60_000,
+    // A janela fica visível por padrão. Use BROWSER_HEADLESS=true em servidores.
+    BROWSER_HEADLESS: process.env.BROWSER_HEADLESS === 'true',
+    BROWSER_PROFILE_PATH: process.env.BROWSER_PROFILE_PATH || '.jarvis-browser-profile',
+    BROWSER_TIMEOUT_MS: Number(process.env.BROWSER_TIMEOUT_MS) || 10_000,
+    BROWSER_MAX_READ_CHARS: Number(process.env.BROWSER_MAX_READ_CHARS) || 4_000,
+    BROWSER_REMOTE_DEBUGGING_URL: process.env.BROWSER_REMOTE_DEBUGGING_URL || 'http://127.0.0.1:9222',
+    BROWSER_SEARCH_URL: process.env.BROWSER_SEARCH_URL || 'https://search.brave.com/search?q=',
+    BROWSER_EXECUTABLE_PATH: process.env.BROWSER_EXECUTABLE_PATH || '',
+    BROWSER_ALLOWED_HOSTS: (process.env.BROWSER_ALLOWED_HOSTS || '')
+        .split(',').map((host) => host.trim().toLowerCase()).filter(Boolean),
+    BROWSER_BLOCKED_HOSTS: (process.env.BROWSER_BLOCKED_HOSTS || '')
+        .split(',').map((host) => host.trim().toLowerCase()).filter(Boolean),
+    MAX_HISTORY_MESSAGES: Math.min(Math.max(Number(process.env.MAX_HISTORY_MESSAGES) || 12, 2), 40),
+    VISION_MODEL: process.env.VISION_MODEL || 'llava',
+    VISION_TIMEOUT_MS: Number(process.env.VISION_TIMEOUT_MS) || 30_000,
+    VISION_MAX_TOKENS: Number(process.env.VISION_MAX_TOKENS) || 300,
 };
 
 

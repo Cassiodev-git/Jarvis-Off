@@ -28,6 +28,9 @@ import { WttrWeatherProvider } from './infrastructure/providers/WttrWeatherProvi
 import { ExchangeRateProvider } from './infrastructure/providers/ExchangeRateProvider.js';
 import { MorningBriefingService } from './core/services/MorningBriefingService.js';
 import { WakePhraseMatcher } from './core/services/WakePhraseMatcher.js';
+import { GoogleNewsRssProvider } from './infrastructure/providers/GoogleNewsRssProvider.js';
+import { BrowserAutomationService } from './infrastructure/browser/BrowserAutomationService.js';
+import { OllamaVisionProvider } from './infrastructure/providers/OllamaVisionProvider.js';
 
 async function bootstrap() {
     const logger = new ConsoleLoggerProvider();
@@ -56,6 +59,7 @@ async function bootstrap() {
         modelPath: env.PIPER_MODEL_PATH,
     });
     const wakeWordProvider = env.VOICE_MODE ? undefined : new VoskProvider();
+    const browserAutomation = new BrowserAutomationService();
 
     // 4. Instanciação do Núcleo JarvisCore
     const jarvis = new JarvisCore({
@@ -67,6 +71,9 @@ async function bootstrap() {
         logger,
         commandDispatcher,
         morningBriefingService,
+        newsProvider: new GoogleNewsRssProvider(),
+        browserAutomation,
+        visionProvider: new OllamaVisionProvider(),
         ttsProvider,
         wakeWordProvider,
     });
@@ -92,7 +99,9 @@ async function bootstrap() {
         }
 
         try {
-            const response = await jarvis.handleUserPrompt(prompt, history);
+            const response = await jarvis.handleUserPrompt(prompt, history, {
+                awaitSpeech: false,
+            });
             return {
                 response,
                 state: jarvis.getSessionState().getSnapshot(),
@@ -140,6 +149,7 @@ async function bootstrap() {
         process.once('SIGINT', async () => {
             await voiceListener.stop();
             await app.close();
+            await browserAutomation.close();
             process.exit(0);
         });
     }

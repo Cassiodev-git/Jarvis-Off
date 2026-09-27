@@ -54,3 +54,9 @@ Para restringir a navegação, configure `BROWSER_ALLOWED_HOSTS` com hosts separ
 por vírgula; `BROWSER_BLOCKED_HOSTS` pode bloquear hosts específicos. O histórico
 enviado ao modelo é limitado por `MAX_HISTORY_MESSAGES`. Para habilitar a visão,
 instale um modelo compatível no Ollama e configure `VISION_MODEL`.
+
+## Banco de dados
+
+Gere uma nova migration após alterar o schema com `npm run db:generate` e aplique
+as migrations pendentes com `npm run db:migrate`. Os arquivos versionados ficam
+na pasta `drizzle/`.

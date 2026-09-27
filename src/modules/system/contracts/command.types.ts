@@ -1,4 +1,4 @@
-export type CommandIntent = 'OPEN_APPLICATION' | 'RUN_SCRIPT';
+export type CommandIntent = 'OPEN_APPLICATION' | 'CLOSE_APPLICATION' | 'RUN_SCRIPT';
 
 export interface OpenApplicationPayload {
     readonly appName: string;
@@ -11,7 +11,11 @@ export interface RunScriptPayload {
     readonly args?: readonly string[];
 }
 
-export type CommandPayload = OpenApplicationPayload | RunScriptPayload;
+export interface CloseApplicationPayload {
+    readonly appName: string;
+}
+
+export type CommandPayload = OpenApplicationPayload | CloseApplicationPayload | RunScriptPayload;
 
 export interface CommandResult {
     readonly success: boolean;

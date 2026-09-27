@@ -1,6 +1,7 @@
 export interface AllowedApplication {
     readonly executable: string;
     readonly baseArgs?: readonly string[];
+    readonly processNames?: readonly string[];
 }
 
 export interface AllowedScript {
@@ -11,12 +12,12 @@ export interface AllowedScript {
 // Os nomes expostos ao restante da aplicação são aliases controlados. O valor
 // nunca é interpolado em um comando shell.
 export const ALLOWED_APPLICATIONS: Readonly<Record<string, AllowedApplication>> = {
-    code: { executable: 'code' },
-    'google-chrome': { executable: 'google-chrome' },
-    firefox: { executable: 'firefox' },
-    spotify: { executable: 'spotify' },
-    nautilus: { executable: 'nautilus' },
-    'brave-browser': { executable: 'brave-browser' },
+    code: { executable: 'code', processNames: ['code'] },
+    'google-chrome': { executable: 'google-chrome', processNames: ['google-chrome', 'chrome'] },
+    firefox: { executable: 'firefox', processNames: ['firefox'] },
+    spotify: { executable: 'spotify', processNames: ['spotify'] },
+    nautilus: { executable: 'nautilus', processNames: ['nautilus'] },
+    'brave-browser': { executable: 'brave-browser', processNames: ['brave-browser', 'brave'] },
 };
 
 // Scripts são comandos completos e fixos. Argumentos livres não são aceitos

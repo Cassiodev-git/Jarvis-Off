@@ -2,8 +2,12 @@ import { AppError } from '../../shared/errors/AppError.js';
 import { ConsoleLoggerProvider } from '../../infrastructure/logger/ConsoleLoggerProvider.js';
 import { LoggerProvider } from '../../infrastructure/logger/LoggerProvider.js';
 import { AppExecutor } from '../../modules/system/AppExecutor.js';
+import { JarvisPlugin } from '../../core/plugins/JarvisPlugin.js';
 
-export class DevelopmentPlugin {
+export class DevelopmentPlugin implements JarvisPlugin {
+    public readonly id = 'development';
+    public readonly name = 'Desenvolvimento';
+    public readonly version = '1.0.0';
     private readonly appExecutor: AppExecutor;
 
     constructor(logger: LoggerProvider = new ConsoleLoggerProvider()) {

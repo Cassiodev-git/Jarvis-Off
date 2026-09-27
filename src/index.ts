@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import fastify from 'fastify';
 import cors from '@fastify/cors';
+import type { FastifyInstance } from 'fastify';
 
 // Core & Interfaces
 import { JarvisCore } from './core/JarvisCore.js';
@@ -31,10 +32,15 @@ import { WakePhraseMatcher } from './core/services/WakePhraseMatcher.js';
 import { GoogleNewsRssProvider } from './infrastructure/providers/GoogleNewsRssProvider.js';
 import { BrowserAutomationService } from './infrastructure/browser/BrowserAutomationService.js';
 import { OllamaVisionProvider } from './infrastructure/providers/OllamaVisionProvider.js';
+import { PluginRegistry } from './core/plugins/PluginRegistry.js';
+import { registerCorePlugins } from './plugins/index.js';
 
 async function bootstrap() {
     const logger = new ConsoleLoggerProvider();
     logger.info('🚀 Inicializando J.A.R.V.I.S. Engine...');
+    const pluginRegistry = new PluginRegistry();
+    await registerCorePlugins(pluginRegistry, logger);
+    logger.info('Plugins carregados.', { plugins: pluginRegistry.list().map((plugin) => plugin.id) });
 
     // 1. Instanciação da Camada de Banco de Dados e Repositórios
     const memoryRepository = new MemoryRepository();
@@ -60,6 +66,9 @@ async function bootstrap() {
     });
     const wakeWordProvider = env.VOICE_MODE ? undefined : new VoskProvider();
     const browserAutomation = new BrowserAutomationService();
+    const app: FastifyInstance = fastify({ logger: false });
+    await app.register(cors, { origin: env.CORS_ORIGINS });
+    let voiceListener: ContinuousVoiceListener | undefined;
 
     // 4. Instanciação do Núcleo JarvisCore
     const jarvis = new JarvisCore({
@@ -76,12 +85,16 @@ async function bootstrap() {
         visionProvider: new OllamaVisionProvider(),
         ttsProvider,
         wakeWordProvider,
+        pluginRegistry,
+        onShutdownRequested: async () => {
+            await voiceListener?.stop();
+            await browserAutomation.close();
+            await pluginRegistry.shutdown();
+            await app.close();
+        },
     });
 
     // 5. Configuração do Servidor Fastify (API HTTP)
-    const app = fastify({ logger: false });
-    await app.register(cors, { origin: env.CORS_ORIGINS });
-
     // Rota de verificação do estado do sistema
     app.get('/health', async () => ({
         status: 'online',
@@ -132,7 +145,7 @@ async function bootstrap() {
             longPhraseWordThreshold: env.STT_LONG_PHRASE_WORDS,
             longPhraseSecondsThreshold: env.STT_LONG_PHRASE_SECONDS,
         }, logger);
-        const voiceListener = new ContinuousVoiceListener(
+        voiceListener = new ContinuousVoiceListener(
             speechProvider,
             async (transcription) => {
                 await jarvis.handleUserPrompt(transcription);
@@ -147,9 +160,10 @@ async function bootstrap() {
 
         voiceListener.start();
         process.once('SIGINT', async () => {
-            await voiceListener.stop();
+            await voiceListener?.stop();
             await app.close();
             await browserAutomation.close();
+            await pluginRegistry.shutdown();
             process.exit(0);
         });
     }

@@ -21,11 +21,15 @@ import { GoogleNewsRssProvider } from './infrastructure/providers/GoogleNewsRssP
 import { BrowserAutomationService } from './infrastructure/browser/BrowserAutomationService.js';
 import { OllamaVisionProvider } from './infrastructure/providers/OllamaVisionProvider.js';
 import { env } from './config/env.js';
+import { PluginRegistry } from './core/plugins/PluginRegistry.js';
+import { registerCorePlugins } from './plugins/index.js';
 
 const EXIT_COMMANDS = new Set(['sair', 'exit', 'quit']);
 
-function createJarvis(): JarvisCore {
+async function createJarvis(onShutdownRequested?: () => Promise<void> | void): Promise<JarvisCore> {
     const logger = new ConsoleLoggerProvider();
+    const pluginRegistry = new PluginRegistry();
+    await registerCorePlugins(pluginRegistry, logger);
     const memoryService = new MemoryService(new MemoryRepository());
     const sessionState = new SessionState();
     const contextBuilder = new ContextBuilder(memoryService, logger);
@@ -33,6 +37,7 @@ function createJarvis(): JarvisCore {
         piperPath: env.PIPER_PATH,
         modelPath: env.PIPER_MODEL_PATH,
     });
+    const browserAutomation = new BrowserAutomationService();
 
     return new JarvisCore({
         aiProvider: new OllamaProvider(),
@@ -48,20 +53,27 @@ function createJarvis(): JarvisCore {
             env.WEATHER_CITY,
         ),
         newsProvider: new GoogleNewsRssProvider(),
-        browserAutomation: new BrowserAutomationService(),
+        browserAutomation,
         visionProvider: new OllamaVisionProvider(),
         ttsProvider,
+        pluginRegistry,
+        onShutdownRequested: async () => {
+            await browserAutomation.close();
+            await pluginRegistry.shutdown();
+            await onShutdownRequested?.();
+        },
     });
 }
 
 export async function runCli(): Promise<void> {
-    const jarvis = createJarvis();
-    const terminal = readline.createInterface({
+    let terminal: readline.Interface | undefined;
+    const jarvis = await createJarvis(() => terminal?.close());
+    terminal = readline.createInterface({
         input: process.stdin,
         output: process.stdout,
         prompt: 'jarvis > ',
     });
-    terminal.on('SIGINT', () => terminal.close());
+    terminal.on('SIGINT', () => terminal?.close());
 
     console.log('J.A.R.V.I.S. CLI iniciado. Digite "sair", "exit" ou "quit" para encerrar.');
     terminal.prompt();

@@ -14,6 +14,7 @@ import { MorningBriefingService } from './services/MorningBriefingService.js';
 import { INewsProvider, NewsItem } from './contracts/INewsProvider.js';
 import { IBrowserAutomation } from './contracts/IBrowserAutomation.js';
 import { IVisionProvider } from './contracts/IVisionProvider.js';
+import { PluginRegistry } from './plugins/PluginRegistry.js';
 
 export interface JarvisCoreDependencies {
     aiProvider: ILanguageModel;
@@ -29,6 +30,8 @@ export interface JarvisCoreDependencies {
     visionProvider?: IVisionProvider;
     ttsProvider?: ITextToSpeech;
     wakeWordProvider?: IWakeWord;
+    pluginRegistry?: PluginRegistry;
+    onShutdownRequested?: () => Promise<void> | void;
 }
 
 export class JarvisCore {
@@ -45,6 +48,8 @@ export class JarvisCore {
     private readonly visionProvider?: IVisionProvider;
     private readonly ttsProvider?: ITextToSpeech;
     private readonly wakeWordProvider?: IWakeWord;
+    private readonly pluginRegistry?: PluginRegistry;
+    private readonly onShutdownRequested?: () => Promise<void> | void;
     private pendingMemoryDeletion?: string;
     private pendingBrowserClick?: { kind: 'selector' | 'text'; value: string };
 
@@ -62,6 +67,8 @@ export class JarvisCore {
         this.visionProvider = deps.visionProvider;
         this.ttsProvider = deps.ttsProvider;
         this.wakeWordProvider = deps.wakeWordProvider;
+        this.pluginRegistry = deps.pluginRegistry;
+        this.onShutdownRequested = deps.onShutdownRequested;
     }
 
     /**
@@ -120,6 +127,7 @@ export class JarvisCore {
             this.logger.debug(`Intenção detectada: ${intentResult.intent}`);
 
             let responseText = '';
+            let shutdownRequested = false;
 
             // 2. Trata comandos determinísticos ou delega ao LLM
             if (intentResult.intent === 'GOOD_MORNING' && this.morningBriefingService) {
@@ -158,6 +166,15 @@ export class JarvisCore {
                 const scriptName = String(intentResult.payload?.scriptName ?? '');
                 const result = await this.commandDispatcher.dispatch('RUN_SCRIPT', { scriptName });
                 responseText = result.success ? result.message : `Não foi possível executar o script: ${result.message}`;
+            } else if (intentResult.intent === 'CLOSE_APPLICATION' && this.commandDispatcher) {
+                const target = String(intentResult.payload?.target ?? '');
+                const result = await this.commandDispatcher.dispatch('CLOSE_APPLICATION', {
+                    appName: this.normalizeApplicationName(target),
+                });
+                responseText = result.success ? result.message : `Não foi possível encerrar a aplicação: ${result.message}`;
+            } else if (intentResult.intent === 'SYSTEM_SHUTDOWN') {
+                shutdownRequested = true;
+                responseText = 'Encerrando o Jarvis.';
             } else {
                 const normalizedPrompt = PhoneticNormalizer.normalize(prompt);
                 const snapshot = this.sessionState.getSnapshot();
@@ -183,6 +200,10 @@ export class JarvisCore {
 
             if (options?.awaitSpeech !== false) {
                 this.sessionState.setStatus('IDLE');
+            }
+
+            if (shutdownRequested) {
+                await this.onShutdownRequested?.();
             }
             return responseText;
         } catch (error) {
@@ -470,5 +491,9 @@ export class JarvisCore {
 
     public getSessionState(): SessionState {
         return this.sessionState;
+    }
+
+    public getPlugins(): readonly import('./plugins/JarvisPlugin.js').JarvisPlugin[] {
+        return this.pluginRegistry?.list() ?? [];
     }
 }
